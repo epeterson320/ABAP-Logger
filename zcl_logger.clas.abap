@@ -98,17 +98,13 @@ class zcl_logger definition
 
       add_structure
         importing
-          obj_to_log    type any optional
-          context       type simple optional
-          callback_form type csequence optional
-          callback_prog type csequence optional
-          callback_fm   type csequence optional
-          type          type symsgty optional
-          importance    type balprobcl optional
-            preferred parameter obj_to_log
-        returning
-          value(self)   type ref to zif_logger .
+          structure_to_log type any.
 
+    methods get_structure_fields
+      importing
+        !data_structure type ref to cl_abap_structdescr
+      changing
+        !structure_fields type cl_abap_tabledescr=>component_table.
 endclass.
 
 
@@ -381,18 +377,18 @@ class zcl_logger implementation.
       return.
     elseif msg_type->type_kind = cl_abap_typedescr=>typekind_struct1   "flat structure
         or msg_type->type_kind = cl_abap_typedescr=>typekind_struct2.  "deep structure (already when string is used)
-      add_structure(
-        exporting
-          obj_to_log    = obj_to_log
-          context       = context
-          callback_form = callback_form
-          callback_prog = callback_prog
-          callback_fm   = callback_fm
-          type          = type
-          importance    = importance
-        receiving
-          self          = self
-      ).
+      free_text_msg = msg_type->absolute_name.
+      shift free_text_msg left deleting leading '\TYPE='.
+      concatenate '--- Structure' free_text_msg into free_text_msg separated by space.
+      add( obj_to_log    = free_text_msg
+           context       = context
+           callback_form = callback_form
+           callback_prog = callback_prog
+           callback_fm   = callback_fm
+           type          = type
+           importance    = importance ).
+      clear free_text_msg.
+      add_structure( obj_to_log ).
     else.
       free_text_msg = obj_to_log.
     endif.
@@ -444,40 +440,22 @@ class zcl_logger implementation.
 
 
   method add_structure.
-    data: msg_type        type ref to cl_abap_typedescr,
-          msg_struct_type type ref to cl_abap_structdescr,
-          components      type cl_abap_structdescr=>component_table,
-          component       like line of components,
-          string_to_log   type string.
-    field-symbols: <component>   type any.
+    data: structure_descriptor type ref to cl_abap_structdescr,
+          components type cl_abap_structdescr=>component_table,
+          component like line of components.
+    field-symbols: <component> type any.
 
-    msg_struct_type ?= cl_abap_typedescr=>describe_by_data( obj_to_log ).
-    components = msg_struct_type->get_components( ).
-    add( '--- Begin of structure ---' ).
+    structure_descriptor ?= cl_abap_structdescr=>describe_by_data( structure_to_log ).
+    get_structure_fields( exporting data_structure   = structure_descriptor
+                          changing  structure_fields = components  ).
     loop at components into component.
-      assign component component-name of structure obj_to_log to <component>.
+      check component-type->kind = cl_abap_typedescr=>kind_elem.
+      assign component sy-tabix of structure structure_to_log to <component>.
       if sy-subrc = 0.
-        msg_type = cl_abap_typedescr=>describe_by_data( <component> ).
-        if msg_type->kind = cl_abap_typedescr=>kind_elem.
-          string_to_log = |{ to_lower( component-name ) } = { <component> }|.
-          add( string_to_log ).
-        elseif msg_type->kind = cl_abap_typedescr=>kind_struct.
-          add_structure(
-            exporting
-              obj_to_log    = <component>
-              context       = context
-              callback_form = callback_form
-              callback_prog = callback_prog
-              callback_fm   = callback_fm
-              type          = type
-              importance    = importance
-            receiving
-              self          = self
-          ).
-        endif.
+        add( obj_to_log = |-{ to_lower( component-name ) } = { <component> }|
+             importance = '4' ).
       endif.
     endloop.
-    add( '--- End of structure ---' ).
   endmethod.
 
 
@@ -661,5 +639,23 @@ class zcl_logger implementation.
       callback_fm   = callback_fm
       type          = 'W'
       importance    = importance ).
+  endmethod.
+
+  
+  method get_structure_fields.
+    data structure_components type cl_abap_structdescr=>component_table.
+    data structure_component like line of structure_components.
+    data substructure type ref to cl_abap_structdescr.
+
+    structure_components = data_structure->get_components( ).
+    loop at structure_components into structure_component.
+      if structure_component-as_include = 'X'.
+        substructure ?= structure_component-type.
+        get_structure_fields( exporting data_structure   = substructure
+                              changing  structure_fields = structure_fields ).
+      else.
+        append structure_component to structure_fields.
+      endif.
+    endloop.
   endmethod.
 endclass.
