@@ -60,6 +60,8 @@ class zcl_logger definition
   protected section.
 *"* protected components of class ZCL_LOGGER
 *"* do not include other source files here!!!
+    methods save_log.
+
   private section.
 * Local type for hrpad_message as it is not available in an ABAP Development System
     types: begin of hrpad_message_field_list_alike,
@@ -108,8 +110,6 @@ class zcl_logger definition
             preferred parameter obj_to_log
         returning
           value(self)   type ref to zif_logger .
-
-    methods save_log.
 endclass.
 
 
